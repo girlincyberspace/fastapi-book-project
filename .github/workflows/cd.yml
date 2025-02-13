@@ -1,0 +1,48 @@
+name: Deploy FastAPI App
+
+on:
+  push:
+    branches:
+      - main  # Triggers workflow on merge to main
+
+jobs:
+  deploy:
+    name: Deploy FastAPI App
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Log in to Docker Hub
+      - name: Log in to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      # Build and push Docker image
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest .
+          docker push ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
+
+      # Deploy on the server via SSH
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker login -u "${{ secrets.DOCKER_USERNAME }}" -p "${{ secrets.DOCKER_PASSWORD }}"
+            docker pull ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
+            docker-compose down
+            docker-compose up -d --force-recreate
+
+      # Clean up old Docker images
+      - name: Cleanup Old Docker Images
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: docker system prune -af
